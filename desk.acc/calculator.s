@@ -70,29 +70,18 @@ call_init:
 .proc redraw_screen_and_window
 
         ;; Redraw the desktop (by copying trampoline to ZP)
-        zp_stash := $20
-        lda     LCBANK1
-        lda     LCBANK1
+        zp_routine := $20
         ldx     #sizeof_routine
 :       lda     routine,x
-        sta     zp_stash,x
+        sta     zp_routine,x
         dex
         bpl     :-
-        jsr     zp_stash
+        jsr     zp_routine
 
-        lda     LCBANK1
-        lda     LCBANK1
-
-        bit     offscreen_flag ; if was offscreen, don't bother redrawing
-        bmi     :+
         DESKTOP_CALL DT_REDRAW_ICONS
 
         ;;  Redraw window after event_kind_drag
-        lda     #da_window_id
-        jsr     check_visibility_and_draw_window
-
-        MGTK_CALL MGTK::GetWinPort, getwinport_params
-        MGTK_CALL MGTK::SetPort, grafport
+        jsr     draw_content
         rts
 
 .proc routine
@@ -104,37 +93,6 @@ call_init:
         rts
 .endproc
         sizeof_routine := * - routine
-.endproc
-
-;;; ============================================================
-
-
-        ;; Set when the client area is offscreen and
-        ;; should not be painted.
-offscreen_flag:
-        .byte   0
-
-        ;; Called after window event_kind_drag is complete
-        ;; (called with window_id in A)
-.proc check_visibility_and_draw_window
-        sta     getwinport_params_window_id
-        lda     openwindow_params_top
-        cmp     #screen_height - 1
-        bcc     :+
-        lda     #$80
-        sta     offscreen_flag
-        rts
-
-:       lda     #0
-        sta     offscreen_flag
-
-        MGTK_CALL MGTK::GetWinPort, getwinport_params
-        MGTK_CALL MGTK::SetPort, grafport
-        lda     getwinport_params_window_id
-        cmp     #da_window_id
-        bne     :+
-        jmp     draw_background
-:       rts
 .endproc
 
 ;;; ============================================================
@@ -182,7 +140,7 @@ goaway:  .byte   0
 .endproc
 
 .proc getwinport_params
-window_id:     .byte   0
+window_id:     .byte   da_window_id
         .addr   grafport
 .endproc
         getwinport_params_window_id := getwinport_params::window_id
@@ -715,13 +673,12 @@ init:   sta     ALTZPON
         MGTK_CALL MGTK::SetZP1, preserve_zp_params
         MGTK_CALL MGTK::OpenWindow, winfo
         MGTK_CALL MGTK::InitPort, grafport
-        MGTK_CALL MGTK::SetPort, grafport     ; set clipping bounds?
+        MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::FlushEvents
 
         jsr     reset_buffer2
 
-        lda     #da_window_id
-        jsr     check_visibility_and_draw_window
+        jsr     draw_content
         jsr     reset_buffers_and_display
 
         lda     #'='            ; last operation
@@ -804,8 +761,9 @@ ignore_click:
         rts
 
 :       lda     findwindow_params::which_area
-        cmp     #MGTK::area_content ; Client area?
+        cmp     #MGTK::area_content ; Content area?
         bne     :+
+
         jsr     map_click_to_button ; try to translate click into key
         bcc     ignore_click
         jmp     process_key
@@ -822,14 +780,14 @@ exit:   MGTK_CALL MGTK::CloseWindow, closewindow_params
 
 .proc do_close
         ;; Copy following routine to ZP and invoke it
-        zp_stash := $20
+        zp_routine := $20
 
         ldx     #sizeof_routine
 loop:   lda     routine,x
-        sta     zp_stash,x
+        sta     zp_routine,x
         dex
         bpl     loop
-        jmp     zp_stash
+        jmp     zp_routine
 
 .proc routine
         sta     RAMRDOFF
@@ -1348,14 +1306,18 @@ end:    jsr     display_buffer1
 .endproc
 
 .proc depress_button
+        stxy    invert_addr
+        stxy    inrect_params
+        stxy    restore_addr
+
+        MGTK_CALL MGTK::GetWinPort, getwinport_params
+        cmp     #MGTK::error_window_obscured
+        bne     :+
+        rts
+:       MGTK_CALL MGTK::SetPort, grafport
+
         button_state := $FC
 
-        stx     invert_addr
-        stx     inrect_params
-        stx     restore_addr
-        sty     invert_addr+1
-        sty     inrect_params+1
-        sty     restore_addr+1
         MGTK_CALL MGTK::SetPattern, black_pattern
         MGTK_CALL MGTK::SetPenMode, penmode_xor
         sec
@@ -1429,8 +1391,10 @@ loop:   lda     #' '
         ; fall through
 .endproc
 .proc display_buffer1
-        bit     offscreen_flag
-        bmi     end
+        MGTK_CALL MGTK::GetWinPort, getwinport_params
+        cmp     #MGTK::error_window_obscured
+        beq     end
+        MGTK_CALL MGTK::SetPort, grafport
         ldxy    #text_buffer1
         jsr     pre_display_buffer
         MGTK_CALL MGTK::DrawText, drawtext_params1
@@ -1438,8 +1402,10 @@ end:    rts
 .endproc
 
 .proc display_buffer2
-        bit     offscreen_flag
-        bmi     end
+        MGTK_CALL MGTK::GetWinPort, getwinport_params
+        cmp     #MGTK::error_window_obscured
+        beq     end
+        MGTK_CALL MGTK::SetPort, grafport
         ldxy    #text_buffer2
         jsr     pre_display_buffer
         MGTK_CALL MGTK::DrawText, drawtext_params2
@@ -1463,7 +1429,13 @@ end:    rts
 ;;; ============================================================
 ;;; Draw the window contents (background, buttons)
 
-.proc draw_background
+.proc draw_content
+        MGTK_CALL MGTK::GetWinPort, getwinport_params
+        cmp     #MGTK::error_window_obscured
+        bne     :+
+        rts
+:       MGTK_CALL MGTK::SetPort, grafport
+
         ;; Frame
         MGTK_CALL MGTK::HideCursor
         MGTK_CALL MGTK::SetPattern, background_pattern
@@ -1473,10 +1445,7 @@ end:    rts
         MGTK_CALL MGTK::SetPattern, white_pattern
         MGTK_CALL MGTK::PaintRect, clear_display_params
         MGTK_CALL MGTK::SetTextBG, settextbg_params
-        ;; fall through
-.endproc
 
-.proc draw_buttons
         ;; Buttons
         ptr := $FA
 
@@ -1538,10 +1507,6 @@ draw_title_bar:
 :       stx     title_bar_bitmap::viewloc::ycoord+1
         MGTK_CALL MGTK::SetPortBits, screen_port ; set clipping rect to whole screen
         MGTK_CALL MGTK::PaintBits, title_bar_bitmap     ; Draws decoration in title bar
-        lda     #da_window_id
-        sta     getwinport_params::window_id
-        MGTK_CALL MGTK::GetWinPort, getwinport_params
-        MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::ShowCursor
         jsr     display_buffer2
         rts
@@ -1552,10 +1517,14 @@ draw_title_bar:
         lda     LCBANK1
         lda     LCBANK1
         jsr     reset_buffers_and_display
-        bit     offscreen_flag
-        bmi     :+
+
+        MGTK_CALL MGTK::GetWinPort, getwinport_params
+        cmp     #MGTK::error_window_obscured
+        beq     :+
+        MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::MoveTo, error_pos
         MGTK_CALL MGTK::DrawText, error_string
+
 :       jsr     reset_buffer1_and_state
         lda     #'='
         sta     calc_op
