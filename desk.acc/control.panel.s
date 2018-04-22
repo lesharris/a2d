@@ -89,6 +89,40 @@ textfont:       .addr   DEFAULT_FONT
 nextwinfo:      .addr   0
 .endproc
 
+
+.proc winfo_fullscreen
+window_id:      .byte   da_window_id+1
+options:        .byte   MGTK::option_dialog_box
+title:          .addr   str_title
+hscroll:        .byte   MGTK::scroll_option_none
+vscroll:        .byte   MGTK::scroll_option_none
+hthumbmax:      .byte   32
+hthumbpos:      .byte   0
+vthumbmax:      .byte   32
+vthumbpos:      .byte   0
+status:         .byte   0
+reserved:       .byte   0
+mincontwidth:   .word   screen_width
+mincontlength:  .word   screen_height
+maxcontwidth:   .word   screen_width
+maxcontlength:  .word   screen_height
+port:
+viewloc:        DEFINE_POINT 0, 0
+mapbits:        .addr   MGTK::screen_mapbits
+mapwidth:       .word   MGTK::screen_mapwidth
+maprect:        DEFINE_RECT 0, 0, screen_width, screen_height
+pattern:        .res    8, 0
+colormasks:     .byte   MGTK::colormask_and, MGTK::colormask_or
+penloc:         DEFINE_POINT 0, 0
+penwidth:       .byte   1
+penheight:      .byte   1
+penmode:        .byte   0
+textback:       .byte   $7F
+textfont:       .addr   DEFAULT_FONT
+nextwinfo:      .addr   0
+.endproc
+
+
 ;;; ============================================================
 
 
@@ -131,8 +165,8 @@ port:           .addr   grafport
 
 .proc screentowindow_params
 window_id:      .byte   da_window_id
-        DEFINE_POINT 0, 0, screen
-        DEFINE_POINT 0, 0, window
+screen: DEFINE_POINT 0, 0, screen
+window: DEFINE_POINT 0, 0, window
 .endproc
         mx := screentowindow_params::window::xcoord
         my := screentowindow_params::window::ycoord
@@ -255,24 +289,79 @@ fatbits_rect:
 
 ;;; ============================================================
 
-
-
 .proc handle_click
-moved:  copy16  event_params::xcoord, screentowindow_params::screen::xcoord
+        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
         copy16  event_params::ycoord, screentowindow_params::screen::ycoord
         MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
 
-        dec16   mx
-        cmp16   mx, fatbits_rect::x1
-        bcc     bail
-        dec16   my
-        cmp16   my, fatbits_rect::y1
-        bcs     continue
-bail:   jmp     done
+        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
+        MGTK_CALL MGTK::InRect, fatbits_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        jmp     handle_bits_click
 
-continue:
+:       MGTK_CALL MGTK::InRect, larr_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        jmp     handle_larr_click
+
+:       MGTK_CALL MGTK::InRect, rarr_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        jmp     handle_rarr_click
+
+:       MGTK_CALL MGTK::InRect, preview_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        jmp     handle_pattern_click
+
+:       jmp     input_loop
+.endproc
+
+;;; ============================================================
+
+.proc handle_rarr_click
+        inc     pattern_index
+        lda     pattern_index
+        cmp     #pattern_count
+        bcc     :+
+        lda     #1
+:       sta     pattern_index
+        jmp     update_pattern
+.endproc
+
+.proc handle_larr_click
+        dec     pattern_index
+        lda     pattern_index
+        bpl     :+
+        lda     #pattern_count-1
+:       sta     pattern_index
+        jmp     update_pattern
+.endproc
+
+.proc update_pattern
+        ptr := $06
+        lda     pattern_index
+        asl
+        tay
+        copy16  patterns,y, ptr
+        ldy     #7
+:       lda     (ptr),y
+        sta     pattern,y
+        dey
+        bpl     :-
+
+        jsr     update_bits
+        jmp     input_loop
+.endproc
+
+;;; ============================================================
+
+.proc handle_bits_click
         sub16   mx, fatbits_rect::x1, mx
         sub16   my, fatbits_rect::y1, my
+        dec16   mx
+        dec16   my
 
         ldy     #fatbit_ws
 :       lsr16   mx
@@ -294,16 +383,50 @@ continue:
         eor     mask,x
         sta     pattern,y
 
+        jsr     update_bits
+done:   jmp     input_loop
+
+mask:   .byte   1<<0, 1<<1, 1<<2, 1<<3, 1<<4, 1<<5, 1<<6, 1<<7
+.endproc
+
+.proc update_bits
         MGTK_CALL MGTK::GetWinPort, winport_params
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
         jsr     draw_bits
         MGTK_CALL MGTK::ShowCursor
+        rts
+.endproc
 
-done:   jmp     input_loop
+;;; ============================================================
 
-mask:   .byte   1<<0, 1<<1, 1<<2, 1<<3, 1<<4, 1<<5, 1<<6, 1<<7
+.proc handle_pattern_click
+        ;; TODO: Replace this horrible hack
+        desktop_pattern := $65AA
+        ldy     #7
+:       lda     pattern,y
+        sta     desktop_pattern,y
+        dey
+        bpl     :-
 
+        MGTK_CALL MGTK::OpenWindow, winfo_fullscreen
+        MGTK_CALL MGTK::CloseWindow, winfo_fullscreen
+
+        ;; Draw DeskTop's windows
+        sta     RAMRDOFF
+        sta     RAMWRTOFF
+        jsr     JUMP_TABLE_REDRAW_ALL
+        sta     RAMRDON
+        sta     RAMWRTON
+
+        ;; Draw DA's window
+        jsr     draw_window
+
+        ;; Draw DeskTop icons
+        DESKTOP_CALL DT_REDRAW_ICONS
+
+
+        jmp input_loop
 .endproc
 
 ;;; ============================================================
@@ -313,25 +436,6 @@ pencopy:        .byte   MGTK::pencopy
 penBIC:         .byte   MGTK::penBIC
 notpencopy:     .byte   MGTK::notpencopy
 
-pattern:
-        .byte   %01010101
-        .byte   %10101010
-        .byte   %01010101
-        .byte   %10101010
-        .byte   %01010101
-        .byte   %10101010
-        .byte   %01010101
-        .byte   %10101010
-
-black_pattern:
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
-        .byte   %00000000
 
 
 preview_l       := 99
@@ -353,28 +457,34 @@ preview_frame:
         arr_h := 5
         arr_inset := 5
 
+        rarr_l := preview_r - arr_inset - arr_w
+        rarr_t := preview_t+1
+        rarr_r := rarr_l + arr_w - 1
+        rarr_b := rarr_t + arr_h - 1
+
+        larr_l := preview_l + arr_inset + 1
+        larr_t := preview_t + 1
+        larr_r := larr_l + arr_w - 1
+        larr_b := larr_t + arr_h - 1
+
+.proc larr_params
+viewloc:        DEFINE_POINT larr_l, larr_t
+mapbits:        .addr   larr_bitmap
+mapwidth:       .byte   1
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
+.endproc
+
 .proc rarr_params
-viewloc:        DEFINE_POINT preview_r - arr_inset - arr_w, preview_t+1
+viewloc:        DEFINE_POINT rarr_l, rarr_t
 mapbits:        .addr   rarr_bitmap
 mapwidth:       .byte   1
 reserved:       .byte   0
 cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
 .endproc
 
-rarr_bitmap:
-        .byte   px(%1100000)
-        .byte   px(%1111000)
-        .byte   px(%1111110)
-        .byte   px(%1111000)
-        .byte   px(%1100000)
-
-.proc larr_params
-viewloc:        DEFINE_POINT preview_l + arr_inset + 1, preview_t+1
-mapbits:        .addr   larr_bitmap
-mapwidth:       .byte   1
-reserved:       .byte   0
-cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
-.endproc
+larr_rect:      DEFINE_RECT larr_l, larr_t, larr_r, larr_b
+rarr_rect:      DEFINE_RECT rarr_l, rarr_t, rarr_r, rarr_b
 
 larr_bitmap:
         .byte   px(%0000110)
@@ -382,6 +492,12 @@ larr_bitmap:
         .byte   px(%1111110)
         .byte   px(%0011110)
         .byte   px(%0000110)
+rarr_bitmap:
+        .byte   px(%1100000)
+        .byte   px(%1111000)
+        .byte   px(%1111110)
+        .byte   px(%1111000)
+        .byte   px(%1100000)
 
 ;;; ============================================================
 
@@ -470,6 +586,175 @@ size:   .byte fatbit_w, fatbit_h
 
 .endproc
 
+;;; ============================================================
+
+pattern:
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+
+pattern_index:  .byte   0
+pattern_count := 15
+patterns:
+        .addr pattern_checkerboard, pattern_dark, pattern_vdark, pattern_black
+        .addr pattern_olives, pattern_scales, pattern_stripes
+        .addr pattern_light, pattern_vlight, pattern_xlight, pattern_white
+        .addr pattern_cane, pattern_brick, pattern_curvy, pattern_abrick
+
+pattern_checkerboard:
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+        .byte   %01010101
+        .byte   %10101010
+
+pattern_dark:
+        .byte   %00100010
+        .byte   %10001000
+        .byte   %00100010
+        .byte   %10001000
+        .byte   %00100010
+        .byte   %10001000
+        .byte   %00100010
+        .byte   %10001000
+
+pattern_vdark:
+        .byte   %00010001
+        .byte   %00000000
+        .byte   %01000100
+        .byte   %00000000
+        .byte   %00010001
+        .byte   %00000000
+        .byte   %01000100
+        .byte   %00000000
+
+pattern_black:
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+        .byte   %00000000
+
+pattern_olives:
+        .byte   %10001000
+        .byte   %01110110
+        .byte   %01110000
+        .byte   %01110000
+        .byte   %10001000
+        .byte   %01100111
+        .byte   %00000111
+        .byte   %00000111
+
+pattern_scales:
+        .byte   %01111111
+        .byte   %01111111
+        .byte   %10111110
+        .byte   %11000001
+        .byte   %11110111
+        .byte   %11110111
+        .byte   %11101011
+        .byte   %00011100
+
+pattern_stripes:
+        .byte   %11101110
+        .byte   %11011101
+        .byte   %10111011
+        .byte   %01110111
+        .byte   %11101110
+        .byte   %11011101
+        .byte   %10111011
+        .byte   %01110111
+
+pattern_light:
+        .byte   %01110111
+        .byte   %11011101
+        .byte   %01110111
+        .byte   %11011101
+        .byte   %01110111
+        .byte   %11011101
+        .byte   %01110111
+        .byte   %11011101
+
+pattern_vlight:
+        .byte   %01110111
+        .byte   %11111111
+        .byte   %11011110
+        .byte   %11111111
+        .byte   %01110111
+        .byte   %11111111
+        .byte   %11011110
+        .byte   %11111111
+
+pattern_xlight:
+        .byte   %01111111
+        .byte   %11111111
+        .byte   %11110111
+        .byte   %11111111
+        .byte   %01111111
+        .byte   %11111111
+        .byte   %11110111
+        .byte   %11111111
+
+pattern_white:
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+        .byte   %11111111
+
+pattern_cane:
+        .byte   %00000111
+        .byte   %10001011
+        .byte   %11011101
+        .byte   %10111000
+        .byte   %01110000
+        .byte   %11101000
+        .byte   %11011101
+        .byte   %10001110
+
+pattern_brick:
+        .byte   %00000000
+        .byte   %01111111
+        .byte   %01111111
+        .byte   %01111111
+        .byte   %00000000
+        .byte   %11110111
+        .byte   %11110111
+        .byte   %11110111
+
+pattern_curvy:
+        .byte   %11111100
+        .byte   %01111011
+        .byte   %10110111
+        .byte   %11001111
+        .byte   %11110011
+        .byte   %11111101
+        .byte   %11111110
+        .byte   %11111110
+
+pattern_abrick:
+        .byte   %11110111
+        .byte   %11100011
+        .byte   %11011101
+        .byte   %00111110
+        .byte   %01111111
+        .byte   %11111110
+        .byte   %11111101
+        .byte   %11111011
 
 ;;; ============================================================
 
