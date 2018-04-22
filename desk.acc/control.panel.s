@@ -11,6 +11,9 @@
 
         .org $800
 
+        desktop_pattern := $65AA
+
+
 entry:
 
 ;;; Copy the DA to AUX for easy bank switching
@@ -186,10 +189,90 @@ textback:       .byte   0
 textfont:       .addr   0
 .endproc
 
+;;; ============================================================
+;;; Desktop Pattern Editor Resources
+
+pedit_x := 50
+pedit_y := 12
+
+fatbit_w := 8
+fatbit_ws := 3                  ; shift
+fatbit_h := 4
+fatbit_hs := 2                  ; shift
+fatbits_rect:
+        DEFINE_RECT pedit_x, pedit_y, pedit_x + 8 * fatbit_w + 1, pedit_y + 8 * fatbit_h + 1, fatbits_rect
+
+str_desktop_pattern:
+        DEFINE_STRING "Desktop Pattern"
+pattern_label_pos:
+        DEFINE_POINT pedit_x + 35, pedit_y + 47
+
+preview_l       := pedit_x + 79
+preview_t       := pedit_y
+preview_r       := preview_l + 81
+preview_b       := preview_t + 33
+preview_s       := preview_t + 6
+
+preview_rect:
+        DEFINE_RECT preview_l+1, preview_s + 1, preview_r - 1, preview_b - 1
+
+preview_line:
+        DEFINE_RECT preview_l, preview_s, preview_r, preview_s
+
+preview_frame:
+        DEFINE_RECT preview_l, preview_t, preview_r, preview_b
+
+        arr_w := 6
+        arr_h := 5
+        arr_inset := 5
+
+        rarr_l := preview_r - arr_inset - arr_w
+        rarr_t := preview_t+1
+        rarr_r := rarr_l + arr_w - 1
+        rarr_b := rarr_t + arr_h - 1
+
+        larr_l := preview_l + arr_inset + 1
+        larr_t := preview_t + 1
+        larr_r := larr_l + arr_w - 1
+        larr_b := larr_t + arr_h - 1
+
+.proc larr_params
+viewloc:        DEFINE_POINT larr_l, larr_t
+mapbits:        .addr   larr_bitmap
+mapwidth:       .byte   1
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
+.endproc
+
+.proc rarr_params
+viewloc:        DEFINE_POINT rarr_l, rarr_t
+mapbits:        .addr   rarr_bitmap
+mapwidth:       .byte   1
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
+.endproc
+
+larr_rect:      DEFINE_RECT larr_l, larr_t, larr_r, larr_b
+rarr_rect:      DEFINE_RECT rarr_l, rarr_t, rarr_r, rarr_b
+
+larr_bitmap:
+        .byte   px(%0000110)
+        .byte   px(%0011110)
+        .byte   px(%1111110)
+        .byte   px(%0011110)
+        .byte   px(%0000110)
+rarr_bitmap:
+        .byte   px(%1100000)
+        .byte   px(%1111000)
+        .byte   px(%1111110)
+        .byte   px(%1111000)
+        .byte   px(%1100000)
+
 
 ;;; ============================================================
 
 .proc init
+        jsr     init_pattern
         MGTK_CALL MGTK::OpenWindow, winfo
         jsr     draw_window
         MGTK_CALL MGTK::FlushEvents
@@ -278,14 +361,6 @@ common: lda     dragwindow_params::moved
 
 .endproc
 
-;;; ============================================================
-
-fatbit_w := 8
-fatbit_ws := 3                  ; shift
-fatbit_h := 4
-fatbit_hs := 2                  ; shift
-fatbits_rect:
-        DEFINE_RECT 20, 15, 20 + 8 * fatbit_w + 1, 15 + 8 * fatbit_h + 1, fatbits_rect
 
 ;;; ============================================================
 
@@ -325,7 +400,7 @@ fatbits_rect:
         lda     pattern_index
         cmp     #pattern_count
         bcc     :+
-        lda     #1
+        lda     #0
 :       sta     pattern_index
         jmp     update_pattern
 .endproc
@@ -400,9 +475,17 @@ mask:   .byte   1<<0, 1<<1, 1<<2, 1<<3, 1<<4, 1<<5, 1<<6, 1<<7
 
 ;;; ============================================================
 
+.proc init_pattern
+        ldy     #7
+:       lda     desktop_pattern,y
+        sta     pattern,y
+        dey
+        bpl     :-
+        rts
+.endproc
+
 .proc handle_pattern_click
         ;; TODO: Replace this horrible hack
-        desktop_pattern := $65AA
         ldy     #7
 :       lda     pattern,y
         sta     desktop_pattern,y
@@ -437,68 +520,6 @@ penBIC:         .byte   MGTK::penBIC
 notpencopy:     .byte   MGTK::notpencopy
 
 
-
-preview_l       := 99
-preview_t       := 15
-preview_r       := 180
-preview_b       := 48
-preview_s       := 21
-
-preview_rect:
-        DEFINE_RECT preview_l+1, preview_s + 1, preview_r - 1, preview_b - 1
-
-preview_line:
-        DEFINE_RECT preview_l, preview_s, preview_r, preview_s
-
-preview_frame:
-        DEFINE_RECT preview_l, preview_t, preview_r, preview_b
-
-        arr_w := 6
-        arr_h := 5
-        arr_inset := 5
-
-        rarr_l := preview_r - arr_inset - arr_w
-        rarr_t := preview_t+1
-        rarr_r := rarr_l + arr_w - 1
-        rarr_b := rarr_t + arr_h - 1
-
-        larr_l := preview_l + arr_inset + 1
-        larr_t := preview_t + 1
-        larr_r := larr_l + arr_w - 1
-        larr_b := larr_t + arr_h - 1
-
-.proc larr_params
-viewloc:        DEFINE_POINT larr_l, larr_t
-mapbits:        .addr   larr_bitmap
-mapwidth:       .byte   1
-reserved:       .byte   0
-cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
-.endproc
-
-.proc rarr_params
-viewloc:        DEFINE_POINT rarr_l, rarr_t
-mapbits:        .addr   rarr_bitmap
-mapwidth:       .byte   1
-reserved:       .byte   0
-cliprect:       DEFINE_RECT 0, 0, arr_w-1, arr_h-1
-.endproc
-
-larr_rect:      DEFINE_RECT larr_l, larr_t, larr_r, larr_b
-rarr_rect:      DEFINE_RECT rarr_l, rarr_t, rarr_r, rarr_b
-
-larr_bitmap:
-        .byte   px(%0000110)
-        .byte   px(%0011110)
-        .byte   px(%1111110)
-        .byte   px(%0011110)
-        .byte   px(%0000110)
-rarr_bitmap:
-        .byte   px(%1100000)
-        .byte   px(%1111000)
-        .byte   px(%1111110)
-        .byte   px(%1111000)
-        .byte   px(%1100000)
-
 ;;; ============================================================
 
 .proc draw_window
@@ -510,6 +531,9 @@ rarr_bitmap:
 :
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
+
+        MGTK_CALL MGTK::MoveTo, pattern_label_pos
+        MGTK_CALL MGTK::DrawText, str_desktop_pattern
 
         MGTK_CALL MGTK::SetPenMode, penBIC
         MGTK_CALL MGTK::FrameRect, fatbits_rect
@@ -617,23 +641,23 @@ pattern_checkerboard:
         .byte   %10101010
 
 pattern_dark:
-        .byte   %00100010
-        .byte   %10001000
-        .byte   %00100010
-        .byte   %10001000
-        .byte   %00100010
-        .byte   %10001000
-        .byte   %00100010
-        .byte   %10001000
+        .byte   %01000100
+        .byte   %00010001
+        .byte   %01000100
+        .byte   %00010001
+        .byte   %01000100
+        .byte   %00010001
+        .byte   %01000100
+        .byte   %00010001
 
 pattern_vdark:
-        .byte   %00010001
+        .byte   %10001000
         .byte   %00000000
-        .byte   %01000100
+        .byte   %00100010
         .byte   %00000000
-        .byte   %00010001
+        .byte   %10001000
         .byte   %00000000
-        .byte   %01000100
+        .byte   %00100010
         .byte   %00000000
 
 pattern_black:
@@ -647,63 +671,63 @@ pattern_black:
         .byte   %00000000
 
 pattern_olives:
-        .byte   %10001000
-        .byte   %01110110
-        .byte   %01110000
-        .byte   %01110000
-        .byte   %10001000
-        .byte   %01100111
-        .byte   %00000111
-        .byte   %00000111
+        .byte   %00010001
+        .byte   %01101110
+        .byte   %00001110
+        .byte   %00001110
+        .byte   %00010001
+        .byte   %11100110
+        .byte   %11100000
+        .byte   %11100000
 
 pattern_scales:
-        .byte   %01111111
-        .byte   %01111111
-        .byte   %10111110
-        .byte   %11000001
-        .byte   %11110111
-        .byte   %11110111
-        .byte   %11101011
-        .byte   %00011100
+        .byte   %11111110
+        .byte   %11111110
+        .byte   %01111101
+        .byte   %10000011
+        .byte   %11101111
+        .byte   %11101111
+        .byte   %11010111
+        .byte   %00111000
 
 pattern_stripes:
-        .byte   %11101110
-        .byte   %11011101
-        .byte   %10111011
         .byte   %01110111
-        .byte   %11101110
-        .byte   %11011101
         .byte   %10111011
+        .byte   %11011101
+        .byte   %11101110
         .byte   %01110111
+        .byte   %10111011
+        .byte   %11011101
+        .byte   %11101110
 
 pattern_light:
-        .byte   %01110111
-        .byte   %11011101
-        .byte   %01110111
-        .byte   %11011101
-        .byte   %01110111
-        .byte   %11011101
-        .byte   %01110111
-        .byte   %11011101
+        .byte   %11101110
+        .byte   %10111011
+        .byte   %11101110
+        .byte   %10111011
+        .byte   %11101110
+        .byte   %10111011
+        .byte   %11101110
+        .byte   %10111011
 
 pattern_vlight:
-        .byte   %01110111
+        .byte   %11101110
         .byte   %11111111
-        .byte   %11011110
+        .byte   %10111011
         .byte   %11111111
-        .byte   %01110111
+        .byte   %11101110
         .byte   %11111111
-        .byte   %11011110
+        .byte   %10111011
         .byte   %11111111
 
 pattern_xlight:
-        .byte   %01111111
+        .byte   %11111110
         .byte   %11111111
-        .byte   %11110111
+        .byte   %11101111
         .byte   %11111111
-        .byte   %01111111
+        .byte   %11111110
         .byte   %11111111
-        .byte   %11110111
+        .byte   %11101111
         .byte   %11111111
 
 pattern_white:
@@ -717,44 +741,44 @@ pattern_white:
         .byte   %11111111
 
 pattern_cane:
-        .byte   %00000111
-        .byte   %10001011
-        .byte   %11011101
-        .byte   %10111000
-        .byte   %01110000
-        .byte   %11101000
-        .byte   %11011101
-        .byte   %10001110
+        .byte   %11100000
+        .byte   %11010001
+        .byte   %10111011
+        .byte   %00011101
+        .byte   %00001110
+        .byte   %00010111
+        .byte   %10111011
+        .byte   %01110001
 
 pattern_brick:
         .byte   %00000000
-        .byte   %01111111
-        .byte   %01111111
-        .byte   %01111111
+        .byte   %11111110
+        .byte   %11111110
+        .byte   %11111110
         .byte   %00000000
-        .byte   %11110111
-        .byte   %11110111
-        .byte   %11110111
+        .byte   %11101111
+        .byte   %11101111
+        .byte   %11101111
 
 pattern_curvy:
-        .byte   %11111100
-        .byte   %01111011
-        .byte   %10110111
-        .byte   %11001111
+        .byte   %00111111
+        .byte   %11011110
+        .byte   %11101101
         .byte   %11110011
-        .byte   %11111101
-        .byte   %11111110
-        .byte   %11111110
+        .byte   %11001111
+        .byte   %10111111
+        .byte   %01111111
+        .byte   %01111111
 
 pattern_abrick:
-        .byte   %11110111
-        .byte   %11100011
-        .byte   %11011101
-        .byte   %00111110
-        .byte   %01111111
+        .byte   %11101111
+        .byte   %11000111
+        .byte   %10111011
+        .byte   %01111100
         .byte   %11111110
-        .byte   %11111101
-        .byte   %11111011
+        .byte   %01111111
+        .byte   %10111111
+        .byte   %11011111
 
 ;;; ============================================================
 
