@@ -52,7 +52,7 @@ screen_width    := 560
 screen_height   := 192
 
 da_window_id    := 61
-da_width        := 300
+da_width        := 420
 da_height       := 70
 da_left         := (screen_width - da_width)/2
 da_top          := (screen_height - da_height - 8)/2
@@ -192,8 +192,8 @@ textfont:       .addr   0
 ;;; ============================================================
 ;;; Desktop Pattern Editor Resources
 
-pedit_x := 50
-pedit_y := 12
+pedit_x := 16
+pedit_y := 8
 
 fatbit_w := 8
 fatbit_ws := 3                  ; shift
@@ -268,6 +268,138 @@ rarr_bitmap:
         .byte   px(%1111000)
         .byte   px(%1100000)
 
+;;; ============================================================
+;;; Double-Click Speed Resources
+
+dblclick_x := 210
+dblclick_y := 8
+
+str_dblclick_speed:
+        DEFINE_STRING "Double-Click Speed"
+
+dblclick_label_pos:
+        DEFINE_POINT dblclick_x + 35, dblclick_y + 47
+
+.proc dblclick_params
+viewloc:        DEFINE_POINT dblclick_x, dblclick_y
+mapbits:        .addr   dblclick_bitmap
+mapwidth:       .byte   9
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, 57, 33
+.endproc
+
+dblclick_arrow_pos1:
+        DEFINE_POINT dblclick_x + 65, dblclick_y + 7
+dblclick_arrow_pos2:
+        DEFINE_POINT dblclick_x + 65, dblclick_y + 22
+dblclick_arrow_pos3:
+        DEFINE_POINT dblclick_x + 110, dblclick_y + 10
+dblclick_arrow_pos4:
+        DEFINE_POINT dblclick_x + 110, dblclick_y + 22
+dblclick_arrow_pos5:
+        DEFINE_POINT dblclick_x + 155, dblclick_y + 13
+dblclick_arrow_pos6:
+        DEFINE_POINT dblclick_x + 155, dblclick_y + 23
+
+dblclick_button_pos1:
+        DEFINE_POINT dblclick_x + 85, dblclick_y + 25
+dblclick_button_pos2:
+        DEFINE_POINT dblclick_x + 130, dblclick_y + 25
+dblclick_button_pos3:
+        DEFINE_POINT dblclick_x + 175, dblclick_y + 25
+
+
+        ;; TODO: Slice off extra pixels on left!!!
+dblclick_bitmap:
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0011000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%1111110),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000011),px(%1111111),px(%1000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0000000),px(%0000000),px(%0111111),px(%1111111),px(%1111100),px(%0000000),px(%0000000),px(%0000000)
+        .byte   px(%0000000),px(%0111111),px(%1111111),px(%1100000),px(%0000000),px(%0000111),px(%1111111),px(%1111100),px(%0000000)
+        .byte   px(%0000001),px(%1100000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000111),px(%0000000)
+        .byte   px(%0000111),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000001),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%1111111),px(%1111111),px(%1111111),px(%1111111),px(%1111111),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0000000),px(%0000000),px(%0000000),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0000001),px(%1111111),px(%0000000),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0001111),px(%0000001),px(%1110000),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0111011),px(%0000001),px(%1011100),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0101010),px(%1110011),px(%0000001),px(%1001110),px(%1010101),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0110011),px(%0000001),px(%1001100),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0110011),px(%0000001),px(%1001100),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0110001),px(%1111111),px(%0001100),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000001),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000011),px(%1111111),px(%1110000),px(%0000000),px(%0001111),px(%1111111),px(%1000000),px(%1100000)
+        .byte   px(%0000110),px(%0000000),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000000),px(%0000000),px(%1100000)
+        .byte   px(%0000110),px(%0000000),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000000),px(%0000000),px(%1100000)
+        .byte   px(%0000110),px(%0000000),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000000),px(%0000000),px(%1100000)
+        .byte   px(%0000110),px(%0000000),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000000),px(%0000000),px(%1100000)
+        .byte   px(%0000110),px(%0000000),px(%0000000),px(%0110000),px(%0000000),px(%0001100),px(%0000000),px(%0000000),px(%1100000)
+
+.proc darrow_params
+viewloc:        DEFINE_POINT 0, 0
+mapbits:        .addr   darr_bitmap
+mapwidth:       .byte   3
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, 16, 7
+.endproc
+
+darr_bitmap:
+        .byte   px(%0000011),px(%1111100),px(%0000000)
+        .byte   px(%0000011),px(%1111100),px(%0000000)
+        .byte   px(%0000011),px(%1111100),px(%0000000)
+        .byte   px(%1111111),px(%1111111),px(%1110000)
+        .byte   px(%0011111),px(%1111111),px(%1000000)
+        .byte   px(%0000111),px(%1111110),px(%0000000)
+        .byte   px(%0000001),px(%1111000),px(%0000000)
+        .byte   px(%0000000),px(%0100000),px(%0000000)
+
+.proc checked_params
+viewloc:        DEFINE_POINT 0, 0
+mapbits:        .addr   checked_bitmap
+mapwidth:       .byte   3
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, 15, 7
+.endproc
+
+checked_bitmap:
+        .byte   px(%0000111),px(%1111100),px(%0000000)
+        .byte   px(%0011100),px(%0000111),px(%0000000)
+        .byte   px(%1110001),px(%1110001),px(%1100000)
+        .byte   px(%1100111),px(%1111100),px(%1100000)
+        .byte   px(%1100111),px(%1111100),px(%1100000)
+        .byte   px(%1110001),px(%1110001),px(%1100000)
+        .byte   px(%0011100),px(%0000111),px(%0000000)
+        .byte   px(%0000111),px(%1111100),px(%0000000)
+
+
+.proc unchecked_params
+viewloc:        DEFINE_POINT 0, 0
+mapbits:        .addr   unchecked_bitmap
+mapwidth:       .byte   3
+reserved:       .byte   0
+cliprect:       DEFINE_RECT 0, 0, 15, 7
+.endproc
+
+unchecked_bitmap:
+        .byte   px(%0000111),px(%1111100),px(%0000000)
+        .byte   px(%0011100),px(%0000111),px(%0000000)
+        .byte   px(%1110000),px(%0000001),px(%1100000)
+        .byte   px(%1100000),px(%0000000),px(%1100000)
+        .byte   px(%1100000),px(%0000000),px(%1100000)
+        .byte   px(%1110000),px(%0000001),px(%1100000)
+        .byte   px(%0011100),px(%0000111),px(%0000000)
+        .byte   px(%0000111),px(%1111100),px(%0000000)
 
 ;;; ============================================================
 
@@ -532,6 +664,10 @@ notpencopy:     .byte   MGTK::notpencopy
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
 
+
+        ;; ==============================
+        ;; Desktop Pattern
+
         MGTK_CALL MGTK::MoveTo, pattern_label_pos
         MGTK_CALL MGTK::DrawText, str_desktop_pattern
 
@@ -547,6 +683,49 @@ notpencopy:     .byte   MGTK::notpencopy
         MGTK_CALL MGTK::FrameRect, preview_line
 
         jsr     draw_bits
+
+        ;; ==============================
+        ;; Double-Click Speed
+
+        MGTK_CALL MGTK::MoveTo, dblclick_label_pos
+        MGTK_CALL MGTK::DrawText, str_dblclick_speed
+
+        MGTK_CALL MGTK::SetPenMode, penBIC
+
+.macro copy32 arg1, arg2
+        .scope
+        ldy     #3
+loop:   lda     arg1,y
+        sta     arg2,y
+        dey
+        bpl     loop
+        .endscope
+.endmacro
+
+        ;; TODO: Loop here
+        copy32 dblclick_arrow_pos1, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+        copy32 dblclick_arrow_pos2, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+        copy32 dblclick_arrow_pos3, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+        copy32 dblclick_arrow_pos4, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+        copy32 dblclick_arrow_pos5, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+        copy32 dblclick_arrow_pos6, darrow_params::viewloc
+        MGTK_CALL MGTK::PaintBits, darrow_params
+
+
+        copy32 dblclick_button_pos1, unchecked_params::viewloc
+        MGTK_CALL MGTK::PaintBits, unchecked_params
+        copy32 dblclick_button_pos2, unchecked_params::viewloc
+        MGTK_CALL MGTK::PaintBits, unchecked_params
+        copy32 dblclick_button_pos3, checked_params::viewloc
+        MGTK_CALL MGTK::PaintBits, checked_params
+
+
+        MGTK_CALL MGTK::PaintBits, dblclick_params
 
 done:   MGTK_CALL MGTK::ShowCursor
         rts

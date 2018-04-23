@@ -227,8 +227,10 @@ GLYPH_RARROW := $15
 GLYPH_UARROW := $0B
 GLYPH_DARROW := $0A
 GLYPH_RETURN := $0D
-GLYPH_OAPPLE := $1F
 GLYPH_SAPPLE := $1E
+GLYPH_OAPPLE := $1F
+GLYPH_OCIRC  := $17
+GLYPH_SCIRC  := $1B
 
 ;;; Menu (by default) uses:
 ;;;   Solid Mod   $1E
