@@ -7,6 +7,8 @@
         .include "../desktop.inc"
         .include "../macros.inc"
 
+        .include "opcodes.inc"
+
 ;;; ============================================================
 
         .org $800
@@ -271,6 +273,19 @@ rarr_bitmap:
 ;;; ============================================================
 ;;; Double-Click Speed Resources
 
+        ;; Selected index (1-3, or 0 for 'no match')
+dblclick_speed:
+        .byte   1
+
+        ;; Computed counter values
+dblclick_values:
+dblclick_value1:
+        .word   0
+dblclick_value2:
+        .word   0
+dblclick_value3:
+        .word   0
+
 dblclick_x := 210
 dblclick_y := 8
 
@@ -301,12 +316,14 @@ dblclick_arrow_pos5:
 dblclick_arrow_pos6:
         DEFINE_POINT dblclick_x + 155, dblclick_y + 23
 
-dblclick_button_pos1:
-        DEFINE_POINT dblclick_x + 85, dblclick_y + 25
-dblclick_button_pos2:
-        DEFINE_POINT dblclick_x + 130, dblclick_y + 25
-dblclick_button_pos3:
-        DEFINE_POINT dblclick_x + 175, dblclick_y + 25
+dblclick_button_w := 15
+dblclick_button_h := 7
+dblclick_button_rect1:
+        DEFINE_RECT dblclick_x + 175, dblclick_y + 25, dblclick_x + 175 + dblclick_button_w, dblclick_y + 25 + dblclick_button_h
+dblclick_button_rect2:
+        DEFINE_RECT dblclick_x + 130, dblclick_y + 25, dblclick_x + 130 + dblclick_button_w, dblclick_y + 25 + dblclick_button_h
+dblclick_button_rect3:
+        DEFINE_RECT dblclick_x + 85, dblclick_y + 25, dblclick_x + 85 + dblclick_button_w, dblclick_y + 25 + dblclick_button_h
 
 dblclick_bitmap:
         .byte   px(%0000000),px(%0000000),px(%0000000),px(%0000011),px(%0000000),px(%0000000),px(%0000000),px(%0000000)
@@ -367,7 +384,7 @@ viewloc:        DEFINE_POINT 0, 0
 mapbits:        .addr   checked_bitmap
 mapwidth:       .byte   3
 reserved:       .byte   0
-cliprect:       DEFINE_RECT 0, 0, 15, 7
+cliprect:       DEFINE_RECT 0, 0, dblclick_button_w, dblclick_button_h
 .endproc
 
 checked_bitmap:
@@ -386,7 +403,7 @@ viewloc:        DEFINE_POINT 0, 0
 mapbits:        .addr   unchecked_bitmap
 mapwidth:       .byte   3
 reserved:       .byte   0
-cliprect:       DEFINE_RECT 0, 0, 15, 7
+cliprect:       DEFINE_RECT 0, 0, dblclick_button_w, dblclick_button_h
 .endproc
 
 unchecked_bitmap:
@@ -403,6 +420,7 @@ unchecked_bitmap:
 
 .proc init
         jsr     init_pattern
+        jsr     init_dblclick
         MGTK_CALL MGTK::OpenWindow, winfo
         jsr     draw_window
         MGTK_CALL MGTK::FlushEvents
@@ -520,6 +538,24 @@ common: lda     dragwindow_params::moved
         bne     :+
         jmp     handle_pattern_click
 
+:       MGTK_CALL MGTK::InRect, dblclick_button_rect1
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        lda     #1
+        jmp     handle_dblclick_click
+
+:       MGTK_CALL MGTK::InRect, dblclick_button_rect2
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        lda     #2
+        jmp     handle_dblclick_click
+
+:       MGTK_CALL MGTK::InRect, dblclick_button_rect3
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        lda     #3
+        jmp     handle_dblclick_click
+
 :       jmp     input_loop
 .endproc
 
@@ -602,6 +638,198 @@ mask:   .byte   1<<0, 1<<1, 1<<2, 1<<3, 1<<4, 1<<5, 1<<6, 1<<7
         MGTK_CALL MGTK::ShowCursor
         rts
 .endproc
+
+;;; ============================================================
+
+.proc handle_dblclick_click
+        sta     dblclick_speed
+        tay
+        dey
+        tya
+        asl                     ; *= 2
+        tay
+
+        sta     RAMWRTOFF        ; Store into main
+        lda     dblclick_values,y
+        sta     dblclick_counter_lo
+        iny
+        lda     dblclick_values,y
+        sta     dblclick_counter_hi
+        sta     RAMWRTON
+
+        MGTK_CALL MGTK::GetWinPort, winport_params
+        MGTK_CALL MGTK::SetPort, grafport
+        MGTK_CALL MGTK::HideCursor
+        jsr     draw_dblclick_buttons
+        MGTK_CALL MGTK::ShowCursor
+        jmp     input_loop
+.endproc
+
+;;; ============================================================
+
+dblclick_counter_lo := $860B
+dblclick_counter_hi := $8610
+
+.proc init_dblclick
+        ;; Routine to patch
+        dblclick_routine := $860A
+        dblclick_routine_len := 78
+
+        ;; Counter value
+        dblclick_machine_type := $D2AB
+
+        ;; Compute counter values
+        lda     dblclick_machine_type
+        sta     dblclick_value1
+        lda     #0
+        sta     dblclick_value1+1
+        asl16   dblclick_value1 ; Normal is 2x machine_type
+        copy16  dblclick_value1, dblclick_value2
+        asl16   dblclick_value2 ; Setting 2 is 4x machine time
+        copy16  dblclick_value2, dblclick_value3
+        asl16   dblclick_value3 ; Setting 3 is 32x machine type (!!!)
+        asl16   dblclick_value3
+        asl16   dblclick_value3
+
+        ;; Do we need to patch DeskTop?
+        sta     RAMRDOFF        ; we're running in aux, routine lives in main
+        lda     sig
+        sta     RAMRDON
+        cmp     #OPC_NOP
+        beq     done_patch
+
+        ;; Yes, patch it...
+        sta     RAMWRTOFF
+        ldy     #dblclick_routine_len - 1
+:       lda     routine,y
+        sta     dblclick_routine,y
+        dey
+        bpl     :-
+        ;; And patch the patch with the default value
+        lda     dblclick_value1
+        sta     dblclick_counter_lo
+        lda     dblclick_value1+1
+        sta     dblclick_counter_hi
+        sta     RAMWRTON
+
+done_patch:
+        ;; Load current from main
+        sta     RAMRDOFF
+        lda     dblclick_counter_lo
+        sta     current_counter
+        lda     dblclick_counter_hi
+        sta     current_counter+1
+        sta     RAMRDON
+
+        ;; TODO: Use a loop
+        lda     current_counter
+        cmp     dblclick_value1
+        bne     :+
+        lda     current_counter+1
+        cmp     dblclick_value1+1
+        bne     :+
+
+        lda     #1
+        sta     dblclick_speed
+        rts
+
+:       lda     current_counter
+        cmp     dblclick_value2
+        bne     :+
+        lda     current_counter+1
+        cmp     dblclick_value2+1
+        bne     :+
+
+        lda     #2
+        sta     dblclick_speed
+        rts
+
+:       lda     current_counter
+        cmp     dblclick_value3
+        bne     :+
+        lda     current_counter+1
+        cmp     dblclick_value3+1
+        bne     :+
+
+        lda     #3
+        sta     dblclick_speed
+        rts
+
+:       lda     #0
+        sta     dblclick_speed
+        rts
+
+
+;;; ------------------------------------------------------------
+;;; The following routine is patched into DeskTop MAIN at
+;;; $860A...$8657 and replaces the mouse time delta routine
+;;; with a 16-bit counter (original is 9 bit).
+
+.proc routine
+        orig_org := *
+        .org $860A ;dblclick_routine
+
+        get_event  := $48E6
+        peek_event := $48F0
+        event_kind := $D208
+
+start:
+        counter_lo := *+1
+        lda     #0              ; patched by DA
+        sta     counter
+        counter_hi := *+1
+        lda     #0              ; patched by DA
+        sta     counter+1
+sig:    nop                     ; Used as signature
+
+        ;; Decrement counter, bail if time delta exceeded
+loop:   lda     counter
+        bne     :+
+        dec     counter+1
+:       dec     counter
+        lda     counter
+        ora     counter+1
+        beq     exit
+        jsr     peek_event
+
+        ;; Check coords, bail if pixel delta exceeded
+        jsr     check_delta
+        bmi     exit            ; moved past delta; no double-click
+
+        lda     event_kind
+        cmp     #MGTK::event_kind_no_event
+        beq     loop
+        cmp     #MGTK::event_kind_drag
+        beq     loop
+        cmp     #MGTK::event_kind_button_up
+        bne     :+
+        jsr     get_event
+        jmp     loop
+:       cmp     #MGTK::event_kind_button_down
+        bne     exit
+
+        jsr     get_event
+        return  #0              ; double-click
+
+exit:   return  #$FF            ; not double-click
+
+        PAD_TO $8658
+
+        check_delta := $8658
+        counter := $869E
+
+end:
+        .org orig_org + end - start
+.endproc
+        sig := routine::sig
+        .assert .sizeof(routine) = dblclick_routine_len, error, "Routine length mismatch"
+        .assert dblclick_counter_lo = routine::counter_lo, error, "Offset mismatch"
+        .assert dblclick_counter_hi = routine::counter_hi, error, "Offset mismatch"
+
+current_counter:
+        .word   0
+.endproc
+
 
 ;;; ============================================================
 
@@ -688,7 +916,6 @@ notpencopy:     .byte   MGTK::notpencopy
         MGTK_CALL MGTK::MoveTo, dblclick_label_pos
         MGTK_CALL MGTK::DrawText, str_dblclick_speed
 
-        MGTK_CALL MGTK::SetPenMode, penBIC
 
 .macro copy32 arg1, arg2
         .scope
@@ -700,6 +927,7 @@ loop:   lda     arg1,y
         .endscope
 .endmacro
 
+        MGTK_CALL MGTK::SetPenMode, notpencopy
         ;; TODO: Loop here
         copy32 dblclick_arrow_pos1, darrow_params::viewloc
         MGTK_CALL MGTK::PaintBits, darrow_params
@@ -714,20 +942,58 @@ loop:   lda     arg1,y
         copy32 dblclick_arrow_pos6, darrow_params::viewloc
         MGTK_CALL MGTK::PaintBits, darrow_params
 
+        jsr     draw_dblclick_buttons
 
-        copy32 dblclick_button_pos1, unchecked_params::viewloc
-        MGTK_CALL MGTK::PaintBits, unchecked_params
-        copy32 dblclick_button_pos2, unchecked_params::viewloc
-        MGTK_CALL MGTK::PaintBits, unchecked_params
-        copy32 dblclick_button_pos3, checked_params::viewloc
-        MGTK_CALL MGTK::PaintBits, checked_params
-
+        MGTK_CALL MGTK::SetPenMode, notpencopy
         MGTK_CALL MGTK::PaintBits, dblclick_params
 
 done:   MGTK_CALL MGTK::ShowCursor
         rts
 
 .endproc
+
+.proc draw_dblclick_buttons
+        MGTK_CALL MGTK::SetPenMode, notpencopy
+
+        ldax    #dblclick_button_rect1
+        ldy     #1
+        jsr     draw_dblclick_button
+        ldax    #dblclick_button_rect2
+        ldy     #2
+        jsr     draw_dblclick_button
+        ldax    #dblclick_button_rect3
+        ldy     #3
+        jsr     draw_dblclick_button
+        rts
+.endproc
+
+;;; A,X = pos ptr, Y = selected index (1,2,3)
+.proc draw_dblclick_button
+        ptr := $06
+
+        stax    ptr
+        cpy     dblclick_speed
+        beq     checked
+
+unchecked:
+        ldy     #3
+:       lda     (ptr),y
+        sta     unchecked_params::viewloc,y
+        dey
+        bpl     :-
+        MGTK_CALL MGTK::PaintBits, unchecked_params
+        rts
+
+checked:
+        ldy     #3
+:       lda     (ptr),y
+        sta     checked_params::viewloc,y
+        dey
+        bpl     :-
+        MGTK_CALL MGTK::PaintBits, checked_params
+        rts
+.endproc
+
 
 bitpos:    DEFINE_POINT    0, 0, bitpos
 
