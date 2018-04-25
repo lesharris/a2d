@@ -683,11 +683,12 @@ dblclick_counter_hi := $8610
         sta     dblclick_value1
         lda     #0
         sta     dblclick_value1+1
-        asl16   dblclick_value1 ; Normal is 2x machine_type
+        asl16   dblclick_value1 ; Normal is 2x machine_type (good for 1MHz)
         copy16  dblclick_value1, dblclick_value2
-        asl16   dblclick_value2 ; Setting 2 is 4x machine time
+        asl16   dblclick_value2
+        asl16   dblclick_value2 ; Setting 2 is 8x (good up to 4MHz)
         copy16  dblclick_value2, dblclick_value3
-        asl16   dblclick_value3 ; Setting 3 is 32x machine type (!!!)
+        asl16   dblclick_value3 ; Setting 3 is 64x (good up to 32MHz)
         asl16   dblclick_value3
         asl16   dblclick_value3
 
