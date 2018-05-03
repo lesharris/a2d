@@ -1,20 +1,17 @@
         .setcpu "6502"
 
         .include "apple2.inc"
+        .include "opcodes.inc"
         .include "../inc/apple2.inc"
-        .include "../inc/prodos.inc"
         .include "../mgtk.inc"
         .include "../desktop.inc"
         .include "../macros.inc"
-
-        .include "opcodes.inc"
 
 ;;; ============================================================
 
         .org $800
 
         desktop_pattern := $65AA
-
 
 entry:
 
@@ -49,9 +46,6 @@ entry:
 .endscope
 
 ;;; ============================================================
-
-screen_width    := 560
-screen_height   := 192
 
 da_window_id    := 61
 da_width        := 420
