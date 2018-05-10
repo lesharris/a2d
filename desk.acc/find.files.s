@@ -452,23 +452,14 @@ done_concat:
 ;;; ============================================================
 
 .proc handle_down
-        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
-        copy16  event_params::ycoord, screentowindow_params::screen::ycoord
-        MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
-        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
-
-        MGTK_CALL MGTK::InRect, search_button_rect
-        cmp     #MGTK::inrect_inside
-        bne     :+
         addr_call button_press, search_button_rect
-        bne     done
+        beq     :+
+        bmi     done
         jmp     do_search
 
-:       MGTK_CALL MGTK::InRect, cancel_button_rect
-        cmp     #MGTK::inrect_inside
-        bne     :+
-        addr_call button_press, cancel_button_rect
-        bne     done
+:       addr_call button_press, cancel_button_rect
+        beq     :+
+        bmi     done
         jmp     exit
 
 :
@@ -477,13 +468,21 @@ done:   jmp     input_loop
 .endproc
 
 ;;; ============================================================
-;;; Call with rect addr in A,X; returns 0 if clicked
+;;; Call with rect addr in A,X
+;;; Returns: 0 (beq) if outside, $FF (bmi) if canceled, 1 if clicked
 
 .proc button_press
+        outside         := 0
+        canceled        := $FF
+        clicked         := 1
+
         stax    inrect_addr
         stax    fillrect_addr
+        jsr     test_rect
+        beq     :+
+        return  #outside
 
-        jsr     invert_rect
+:       jsr     invert_rect
 
         lda     #0
         sta     down_flag
@@ -493,16 +492,9 @@ loop:   MGTK_CALL MGTK::GetEvent, event_params
         cmp     #MGTK::event_kind_button_up
         beq     exit
 
-        ;; Map coords and test against rectangle
-        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
-        copy16  event_params::ycoord, screentowindow_params::screen::ycoord
-        MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
-        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
-
-        MGTK_CALL MGTK::InRect, 0, inrect_addr
-        cmp     #MGTK::inrect_inside
-
+        jsr     test_rect
         beq     inside
+
         lda     down_flag       ; outside but was inside?
         beq     invert
         jmp     loop
@@ -519,15 +511,22 @@ invert: jsr     invert_rect
         jmp     loop
 
 exit:   lda     down_flag       ; was depressed?
-        beq     clicked
-        return  #$FF            ; hi bit = cancelled
-
-clicked:
-        jsr     invert_rect     ; invert one last time
-        return  #0
+        beq     :+
+        return  #canceled
+:       jsr     invert_rect     ; invert one last time
+        return  #clicked
 
 down_flag:
         .byte   0
+
+test_rect:
+        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
+        copy16  event_params::ycoord, screentowindow_params::screen::ycoord
+        MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
+        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
+        MGTK_CALL MGTK::InRect, 0, inrect_addr
+        cmp     #MGTK::inrect_inside
+        rts
 
 invert_rect:
         MGTK_CALL MGTK::GetWinPort, winport_params
