@@ -158,22 +158,41 @@ frame_rect1:    DEFINE_RECT 4, 2, da_width-4, da_height-2
 frame_rect2:    DEFINE_RECT 5, 3, da_width-5, da_height-3
 
 find_label_textpos: DEFINE_POINT 16, 20
-find_label:         DEFINE_STRING "Find:"
+find_label:         PASCAL_STRING "Find:"
 input_rect:         DEFINE_RECT 50, 10, da_width-250, 21
-input_textpos:      DEFINE_POINT 12, 20
+input_textpos:      DEFINE_POINT 55, 20
+
+        ;; figure out coords here
+.proc input_mapinfo
+        DEFINE_POINT 75, 35
+        .addr   MGTK::screen_mapbits
+        .byte   MGTK::screen_mapwidth
+        .byte   0
+        DEFINE_RECT 0, 0, 358, 100
+.endproc
+
+
 
 ok_button_rect:    DEFINE_RECT da_width-235, 10, da_width-135, 21
 ok_button_textpos: DEFINE_POINT da_width-235+5, 20
-ok_button_label:   DEFINE_STRING {"Search         ",GLYPH_RETURN}
+ok_button_label:   PASCAL_STRING {"Search         ",GLYPH_RETURN}
 
 cancel_button_rect:    DEFINE_RECT da_width-120, 10, da_width-20, 21
 cancel_button_textpos: DEFINE_POINT da_width-120+5, 20
-cancel_button_label:   DEFINE_STRING "Cancel        Esc"
+cancel_button_label:   PASCAL_STRING "Cancel        Esc"
 
 penxor: .byte   MGTK::penXOR
 
 cursor_ip_flag: .byte   0
 
+buf_left:       .res    17, 0   ; input text before IP
+buf_right:      .res    17, 0   ; input text at/after IP
+buf_search:     .res    17, 0   ; search term
+
+suffix: PASCAL_STRING "  "
+
+ip_blink_counter:       .byte   0
+ip_blink_flag:          .byte   0
 
 ;;; ============================================================
 
@@ -182,27 +201,42 @@ cursor_ip_flag: .byte   0
         lda     LCBANK1
         lda     LCBANK1
 
+        ;; Prep input string
+        lda     #0
+        sta     buf_left
+
+        lda     #1
+        sta     buf_right
+        lda     GLYPH_INSPT
+        sta     buf_right+1
+
+        lda     #0
+        sta     ip_blink_flag
+        lda     machine_speed
+        sta     ip_blink_counter
 
         MGTK_CALL MGTK::OpenWindow, winfo
         jsr     draw_window
+        jsr     draw_input_text
         MGTK_CALL MGTK::FlushEvents
         ;; fall through
 .endproc
 
 .proc input_loop
+        jsr     blink_ip
         MGTK_CALL MGTK::GetEvent, event_params
         bne     exit
         lda     event_params::kind
         cmp     #MGTK::event_kind_button_down
-        beq     handle_down
-        cmp     #MGTK::event_kind_key_down
-        beq     handle_key
-        cmp     #MGTK::event_kind_no_event
-        beq     handle_no_event
-
-        ;; TODO: Blink IP
-
-        jmp     input_loop
+        bne     :+
+        jmp     handle_down
+:       cmp     #MGTK::event_kind_key_down
+        bne     :+
+        jmp     handle_key
+:       cmp     #MGTK::event_kind_no_event
+        bne     :+
+        jmp     handle_no_event
+:       jmp     input_loop
 .endproc
 
 .proc exit
@@ -215,12 +249,212 @@ cursor_ip_flag: .byte   0
 
 ;;; ============================================================
 
+.proc blink_ip
+        dec     ip_blink_counter
+        bne     done
+        lda     machine_speed
+        sta     ip_blink_counter
+
+        bit     ip_blink_flag
+        bmi     clear
+
+set:    lda     #$FF
+        sta     ip_blink_flag
+        lda     #GLYPH_SPC
+        sta     buf_right+1
+        jsr     draw_input_text
+        rts
+
+
+clear:  lda     #0
+        sta     ip_blink_flag
+        lda     #GLYPH_INSPT
+        sta     buf_right+1
+        jsr     draw_input_text
+
+done:   rts
+.endproc
+
+;;; ============================================================
+
 .proc handle_key
         lda     event_params::key
         cmp     #CHAR_ESCAPE
         beq     exit
-        bne     input_loop
+
+        ;;         cmp #CHAR_ENTER
+        ;;         beq do_search
+        cmp     #CHAR_LEFT
+        bne     :+
+        jmp     do_left
+:       cmp     #CHAR_RIGHT
+        bne     :+
+        jmp     do_right
+:       cmp     #CHAR_DELETE
+        bne     :+
+        jmp     do_delete
+
+        ;; Valid characters are . 0-9 A-Z a-z
+:       cmp     #'.'
+        beq     do_char
+        cmp     #'0'
+        bcc     ignore_char
+        cmp     #'9'+1
+        bcc     do_char
+        cmp     #'A'
+        bcc     ignore_char
+        cmp     #'Z'+1
+        bcc     do_char
+        cmp     #'a'
+        bcc     ignore_char
+        cmp     #'z'+1
+        bcc     do_char
+        ;; fall through
 .endproc
+
+ignore_char:
+        ;;         jsr     beep ; ?
+        jmp     input_loop
+
+;;; ; ------------------------------------------------------------
+
+.proc do_char
+        ;; check length
+        tax
+        clc
+        lda     buf_left
+        adc     buf_right
+        cmp     #17             ; max length is 15, plus ip
+        bcs     ignore_char
+
+        ;; append char
+        txa
+        ldx     buf_left
+        inx
+        sta     buf_left,x
+        stx     buf_left
+        jsr     draw_input_text
+        jmp     input_loop
+.endproc
+
+;;; ; ------------------------------------------------------------
+
+
+.proc do_left
+        lda     buf_left            ; length of string to left of IP
+        beq     done
+
+        ;; shift right string up one (apart from IP)
+        ldx     buf_right
+        ldy     buf_right
+        iny
+:       cpx     #1
+        beq     :+
+        lda     buf_right,x
+        sta     buf_right,y
+        dex
+        dey
+        bne     :-              ; always
+
+        ;; move char from end of left string to just after IP in right string
+:       ldx     buf_left
+        lda     buf_left,x
+        sta     buf_right+2
+
+        ;; adjust lengths
+        dec     buf_left
+        inc     buf_right
+
+        jsr     draw_input_text
+
+done:   jmp     input_loop
+.endproc
+
+;;; ; ------------------------------------------------------------
+
+.proc do_right
+        lda     buf_right            ; length of string from IP rightwards
+        cmp     #2              ; must be at least one char (plus IP)
+        bcc     done
+
+        ;; copy char from start of right to end of left
+        lda     buf_right+2
+        ldx     buf_left
+        inx
+        sta     buf_left,x
+
+        ;; shift right string down one (apart from IP)
+        ldx     #3
+        ldy     #2
+:       lda     buf_right,x
+        sta     buf_right,y
+        inx
+        iny
+        cpy     buf_right
+        bcc     :-
+
+        ;; adjust lengths
+        inc     buf_left
+        dec     buf_right
+
+        jsr     draw_input_text
+
+done:   jmp     input_loop
+.endproc
+
+;;; ; ------------------------------------------------------------
+
+
+.proc do_delete
+        lda     buf_left            ; length of string to left of IP
+        beq     done
+
+        dec     buf_left
+        jsr     draw_input_text
+
+done:   jmp     input_loop
+.endproc
+
+
+;;; ; ------------------------------------------------------------
+
+.proc do_search
+        ;; Concatenate left/right strings
+        ldx     buf_left
+        beq     right
+
+        ;; Copy left
+:       lda     buf_left,x
+        sta     buf_search,x
+        dex
+        bpl     :-
+        ldx     buf_left
+
+        ;; Append right
+right:
+        ldy     #1
+:       cpy     buf_right
+        beq     done_concat
+        iny
+        inx
+        lda     buf_right,y
+        sta     buf_search,x
+        bne     :-              ; always
+
+done_concat:
+        stx     buf_search
+
+        ;;  TODO!!!!!
+        jmp     input_loop
+.endproc
+
+
+;;; ; ------------------------------------------------------------
+
+
+
+
+
 
 ;;; ============================================================
 
@@ -263,10 +497,6 @@ done:   jmp     input_loop
 .proc draw_window
         ;; Defer if content area is not visible
         MGTK_CALL MGTK::GetWinPort, winport_params
-        cmp     #MGTK::error_window_obscured
-        bne     :+
-        rts
-:
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
 
@@ -275,23 +505,53 @@ done:   jmp     input_loop
         MGTK_CALL MGTK::FrameRect, frame_rect2
 
         MGTK_CALL MGTK::MoveTo, find_label_textpos
-        MGTK_CALL MGTK::DrawText, find_label
+        addr_call draw_string, find_label
         MGTK_CALL MGTK::FrameRect, input_rect
 
         MGTK_CALL MGTK::FrameRect, ok_button_rect
         MGTK_CALL MGTK::MoveTo, ok_button_textpos
-        MGTK_CALL MGTK::DrawText, ok_button_label
+        addr_call draw_string, ok_button_label
 
         MGTK_CALL MGTK::FrameRect, cancel_button_rect
         MGTK_CALL MGTK::MoveTo, cancel_button_textpos
-        MGTK_CALL MGTK::DrawText, cancel_button_label
+        addr_call draw_string, cancel_button_label
 
         MGTK_CALL MGTK::ShowCursor
 done:   rts
-
-tmpw:   .word   0
 .endproc
 
+;;; ============================================================
+
+.proc draw_input_text
+        MGTK_CALL MGTK::GetWinPort, winport_params
+        MGTK_CALL MGTK::SetPort, grafport
+        MGTK_CALL MGTK::MoveTo, input_textpos
+        MGTK_CALL MGTK::HideCursor
+        addr_call draw_string, buf_left
+        addr_call draw_string, buf_right
+        addr_call draw_string, suffix
+        MGTK_CALL MGTK::ShowCursor
+        rts
+.endproc
+
+;;; ============================================================
+;;; Helper to draw a PASCAL_STRING; call with addr in A,X
+
+.proc draw_string
+        PARAM_BLOCK params, $06
+addr:   .res    2
+length: .res    1
+        END_PARAM_BLOCK
+
+        stax    params::addr
+        ldy     #0
+        lda     (params::addr),y
+        beq     done
+        sta     params::length
+        inc16   params::addr
+        MGTK_CALL MGTK::DrawText, params
+done:   rts
+.endproc
 
 ;;; ============================================================
 
