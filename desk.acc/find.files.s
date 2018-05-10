@@ -173,9 +173,9 @@ input_textpos:      DEFINE_POINT 55, 20
 
 
 
-ok_button_rect:    DEFINE_RECT da_width-235, 10, da_width-135, 21
-ok_button_textpos: DEFINE_POINT da_width-235+5, 20
-ok_button_label:   PASCAL_STRING {"Search         ",GLYPH_RETURN}
+search_button_rect:    DEFINE_RECT da_width-235, 10, da_width-135, 21
+search_button_textpos: DEFINE_POINT da_width-235+5, 20
+search_button_label:   PASCAL_STRING {"Search         ",GLYPH_RETURN}
 
 cancel_button_rect:    DEFINE_RECT da_width-120, 10, da_width-20, 21
 cancel_button_textpos: DEFINE_POINT da_width-120+5, 20
@@ -449,18 +449,94 @@ done_concat:
 .endproc
 
 
-;;; ; ------------------------------------------------------------
-
-
-
-
-
-
 ;;; ============================================================
 
 .proc handle_down
-        jmp     input_loop
+        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
+        copy16  event_params::ycoord, screentowindow_params::screen::ycoord
+        MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
+        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
+
+        MGTK_CALL MGTK::InRect, search_button_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        addr_call button_press, search_button_rect
+        bne     done
+        jmp     do_search
+
+:       MGTK_CALL MGTK::InRect, cancel_button_rect
+        cmp     #MGTK::inrect_inside
+        bne     :+
+        addr_call button_press, cancel_button_rect
+        bne     done
+        jmp     exit
+
+:
+done:   jmp     input_loop
+
 .endproc
+
+;;; ============================================================
+;;; Call with rect addr in A,X; returns 0 if clicked
+
+.proc button_press
+        stax    inrect_addr
+        stax    fillrect_addr
+
+        jsr     invert_rect
+
+        lda     #0
+        sta     down_flag
+
+loop:   MGTK_CALL MGTK::GetEvent, event_params
+        lda     event_params::kind
+        cmp     #MGTK::event_kind_button_up
+        beq     exit
+
+        ;; Map coords and test against rectangle
+        copy16  event_params::xcoord, screentowindow_params::screen::xcoord
+        copy16  event_params::ycoord, screentowindow_params::screen::ycoord
+        MGTK_CALL MGTK::ScreenToWindow, screentowindow_params
+        MGTK_CALL MGTK::MoveTo, screentowindow_params::window
+
+        MGTK_CALL MGTK::InRect, 0, inrect_addr
+        cmp     #MGTK::inrect_inside
+
+        beq     inside
+        lda     down_flag       ; outside but was inside?
+        beq     invert
+        jmp     loop
+
+inside: lda     down_flag       ; already depressed?
+        bne     invert
+        jmp     loop
+
+invert: jsr     invert_rect
+        lda     down_flag
+        clc
+        adc     #$80
+        sta     down_flag
+        jmp     loop
+
+exit:   lda     down_flag       ; was depressed?
+        beq     clicked
+        return  #$FF            ; hi bit = cancelled
+
+clicked:
+        jsr     invert_rect     ; invert one last time
+        return  #0
+
+down_flag:
+        .byte   0
+
+invert_rect:
+        MGTK_CALL MGTK::GetWinPort, winport_params
+        MGTK_CALL MGTK::SetPort, grafport
+        MGTK_CALL MGTK::SetPenMode, penxor
+        MGTK_CALL MGTK::PaintRect, 0, fillrect_addr
+        rts
+.endproc
+
 
 ;;; ============================================================
 
@@ -508,9 +584,9 @@ done:   jmp     input_loop
         addr_call draw_string, find_label
         MGTK_CALL MGTK::FrameRect, input_rect
 
-        MGTK_CALL MGTK::FrameRect, ok_button_rect
-        MGTK_CALL MGTK::MoveTo, ok_button_textpos
-        addr_call draw_string, ok_button_label
+        MGTK_CALL MGTK::FrameRect, search_button_rect
+        MGTK_CALL MGTK::MoveTo, search_button_textpos
+        addr_call draw_string, search_button_label
 
         MGTK_CALL MGTK::FrameRect, cancel_button_rect
         MGTK_CALL MGTK::MoveTo, cancel_button_textpos
