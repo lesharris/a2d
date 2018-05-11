@@ -53,10 +53,15 @@ da_height       := 144
 da_left         := (screen_width - da_width)/2
 da_top          := (screen_height - da_height)/2
 
-str_title:
-        PASCAL_STRING "Eyes"
+results_window_id    := da_window_id+1
+results_width        := da_width - 60
+results_width_sb     := results_width + 20
+results_height       := da_height - 40
+results_left         := da_left + (da_width - results_width_sb) / 2
+results_top          := da_top + 30
 
-;;; TODO: Allow resizing
+str_title:
+        PASCAL_STRING "Find Files"
 
 .proc winfo
 window_id:      .byte   da_window_id
@@ -89,6 +94,39 @@ textback:       .byte   $7F
 textfont:       .addr   DEFAULT_FONT
 nextwinfo:      .addr   0
 .endproc
+
+.proc winfo_results
+window_id:      .byte   results_window_id
+options:        .byte   MGTK::option_dialog_box
+title:          .addr   0
+hscroll:        .byte   MGTK::scroll_option_none
+vscroll:        .byte   MGTK::scroll_option_normal
+hthumbmax:      .byte   0
+hthumbpos:      .byte   0
+vthumbmax:      .byte   3
+vthumbpos:      .byte   0
+status:         .byte   0
+reserved:       .byte   0
+mincontwidth:   .word   results_width
+mincontlength:  .word   results_height
+maxcontwidth:   .word   results_width
+maxcontlength:  .word   results_height ; TODO: increase
+port:
+viewloc:        DEFINE_POINT results_left, results_top
+mapbits:        .addr   MGTK::screen_mapbits
+mapwidth:       .word   MGTK::screen_mapwidth
+cliprect:       DEFINE_RECT 0, 0, results_width, results_height
+penpattern:     .res    8, $FF
+colormasks:     .byte   MGTK::colormask_and, MGTK::colormask_or
+penloc:         DEFINE_POINT 0, 0
+penwidth:       .byte   1
+penheight:      .byte   1
+penmode:        .byte   0
+textbg:         .byte   MGTK::textbg_white
+fontptr:        .addr   DEFAULT_FONT
+nextwinfo:      .addr   0
+.endproc
+
 
 ;;; ============================================================
 
@@ -216,6 +254,7 @@ ip_blink_flag:          .byte   0
         sta     ip_blink_counter
 
         MGTK_CALL MGTK::OpenWindow, winfo
+        MGTK_CALL MGTK::OpenWindow, winfo_results
         jsr     draw_window
         jsr     draw_input_text
         MGTK_CALL MGTK::FlushEvents
@@ -242,6 +281,7 @@ ip_blink_flag:          .byte   0
 .proc exit
         MGTK_CALL MGTK::SetCursor, pointer_cursor
 
+        MGTK_CALL MGTK::CloseWindow, winfo_results
         MGTK_CALL MGTK::CloseWindow, winfo
         DESKTOP_CALL DT_REDRAW_ICONS
         rts
