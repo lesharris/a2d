@@ -9,7 +9,7 @@ HEADERS = $(wildcard ../*.inc) $(wildcard ../inc/*.inc) $(wildcard *.inc)
 
 DAS = $(shell cat TARGETS)
 
-TARGETS = $(patsubst %,$(OUTDIR)/%.built,$(DAS))
+TARGETS = $(patsubst %,$(OUTDIR)/%.built,$(DAS)) $(OUTDIR)/tn17.bin
 
 .PHONY: clean all
 all: $(OUTDIR) $(TARGETS)
@@ -34,3 +34,8 @@ $(OUTDIR)/%.built: $(OUTDIR)/%.o
 $(OUTDIR)/%.SYS: $(OUTDIR)/%.o
 	$(CC65)/ld65 $(CCFLAGS) -o '$@' $<
 	xattr -wx prodos.AuxType '00 20' $@
+
+# System Files .SYS
+$(OUTDIR)/%.bin: $(OUTDIR)/%.o
+	$(CC65)/ld65 $(CCFLAGS) -o '$@' $<
+	xattr -wx prodos.AuxType '00 08' $@
