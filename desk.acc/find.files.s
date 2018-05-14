@@ -103,14 +103,14 @@ hscroll:        .byte   MGTK::scroll_option_none
 vscroll:        .byte   MGTK::scroll_option_normal
 hthumbmax:      .byte   0
 hthumbpos:      .byte   0
-vthumbmax:      .byte   3
+vthumbmax:      .byte   255
 vthumbpos:      .byte   0
 status:         .byte   0
 reserved:       .byte   0
 mincontwidth:   .word   results_width
 mincontlength:  .word   results_height
 maxcontwidth:   .word   results_width
-maxcontlength:  .word   results_height ; TODO: increase
+maxcontlength:  .word   results_height * 2 ; TODO: increase
 port:
 viewloc:        DEFINE_POINT results_left, results_top
 mapbits:        .addr   MGTK::screen_mapbits
@@ -151,15 +151,24 @@ which_area:     .byte   0
 window_id:      .byte   0
 .endproc
 
-.proc trackgoaway_params
-clicked:        .byte   0
+.proc findcontrol_params
+mousex:         .word   0
+mousey:         .word   0
+which_ctl:      .byte   0
+which_part:     .byte   0
 .endproc
 
-.proc dragwindow_params
-window_id:      .byte   0
-dragx:          .word   0
-dragy:          .word   0
-moved:          .byte   0
+.proc trackthumb_params
+which_ctl:      .byte   MGTK::ctl_vertical_scroll_bar
+mousex:         .word   0
+mousey:         .word   0
+thumbpos:       .byte   0
+thumbmoved:     .byte   0
+.endproc
+
+.proc updatethumb_params
+which_ctl:      .byte   MGTK::ctl_vertical_scroll_bar
+thumbpos:       .byte   0
 .endproc
 
 .proc winport_params
@@ -492,6 +501,19 @@ done_concat:
 ;;; ============================================================
 
 .proc handle_down
+        copy16  event_params::xcoord, findwindow_params::mousex
+        copy16  event_params::ycoord, findwindow_params::mousey
+        MGTK_CALL MGTK::FindWindow, findwindow_params
+        lda     findwindow_params::which_area
+        cmp     #MGTK::area_content
+        bne     done
+        lda     findwindow_params::window_id
+        cmp     #results_window_id
+        beq     results
+        cmp     #da_window_id
+        bne     done
+
+        ;; Click in DA content area
         addr_call button_press, search_button_rect
         beq     :+
         bmi     done
@@ -505,6 +527,41 @@ done_concat:
 :
 done:   jmp     input_loop
 
+        ;; Click in Results content area
+results:
+        copy16  event_params::xcoord, findcontrol_params::mousex
+        copy16  event_params::ycoord, findcontrol_params::mousey
+        MGTK_CALL MGTK::FindControl, findcontrol_params
+        lda     findcontrol_params::which_ctl
+        cmp     #MGTK::ctl_vertical_scroll_bar
+        bne     done
+
+        jmp     handle_scroll
+.endproc
+
+
+;;; ============================================================
+;;; Results scroll
+
+.proc handle_scroll
+        lda     findcontrol_params::which_part
+        cmp     #MGTK::part_up_arrow
+        beq     done            ; TODO: Scroll!
+        cmp     #MGTK::part_down_arrow
+        beq     done            ; TODO: Scroll!
+        cmp     #MGTK::part_page_up
+        beq     done            ; TODO: Scroll!
+        cmp     #MGTK::part_page_down
+        beq     done            ; TODO: Scroll!
+        cmp     #MGTK::part_thumb
+        bne     done
+        copy16  event_params::xcoord, trackthumb_params::mousex
+        copy16  event_params::ycoord, trackthumb_params::mousey
+        MGTK_CALL MGTK::TrackThumb, trackthumb_params
+        lda     trackthumb_params::thumbmoved
+        beq     done
+        ;; TODO: Update thumb
+done:   jmp     input_loop
 .endproc
 
 ;;; ============================================================
