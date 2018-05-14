@@ -204,10 +204,10 @@ textfont:       .addr   0
 frame_rect1:    DEFINE_RECT 4, 2, da_width-4, da_height-2
 frame_rect2:    DEFINE_RECT 5, 3, da_width-5, da_height-3
 
-find_label_textpos: DEFINE_POINT 16, 20
+find_label_textpos: DEFINE_POINT 20, 20
 find_label:         PASCAL_STRING "Find:"
-input_rect:         DEFINE_RECT 50, 10, da_width-250, 21
-input_textpos:      DEFINE_POINT 55, 20
+input_rect:         DEFINE_RECT 55, 10, da_width-250, 21
+input_textpos:      DEFINE_POINT 60, 20
 
         ;; figure out coords here
 .proc input_mapinfo
