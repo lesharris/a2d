@@ -129,7 +129,7 @@ port:
 viewloc:        DEFINE_POINT results_left, results_top
 mapbits:        .addr   MGTK::screen_mapbits
 mapwidth:       .word   MGTK::screen_mapwidth
-cliprect:       DEFINE_RECT 0, 0, results_width, results_height
+cliprect:       DEFINE_RECT 0, 0, results_width, results_height, cliprect
 penpattern:     .res    8, $FF
 colormasks:     .byte   MGTK::colormask_and, MGTK::colormask_or
 penloc:         DEFINE_POINT 0, 0
@@ -576,8 +576,9 @@ results:
         bne     try_down
         lda     top_row
         cmp     #0
-        beq     done            ; no-op
-        dec     top_row
+        bne     :+
+        jmp     done
+:       dec     top_row
         bpl     update
 
         ;; scroll down by one line
@@ -586,8 +587,9 @@ try_down:
         bne     try_pgup
         lda     top_row
         cmp     max_top
-        bcs     done            ; no-op
-        inc     top_row
+        bcc     :+
+        jmp     done
+:       inc     top_row
         bpl     update
 
         ;; scroll up by one page
@@ -595,12 +597,12 @@ try_pgup:
         cmp     #MGTK::part_page_up
         bne     try_pgdn
         lda     top_row
-        cmp     page_size
+        cmp     #page_size
         bcs     :+
         lda     #0
         beq     store
 :       sec
-        sbc     page_size
+        sbc     #page_size
         jmp     store
 
         ;; scroll down by one page
@@ -609,31 +611,45 @@ try_pgdn:
         bne     try_thumb
         lda     top_row
         clc
-        adc     page_size
+        adc     #page_size
         cmp     max_top
         bcc     store
         lda     max_top
+        jmp     store
 
 try_thumb:
         cmp     #MGTK::part_thumb
-        bne     done
-        copy16  event_params::xcoord, trackthumb_params::mousex
+        beq     :+
+        jmp     done
+:       copy16  event_params::xcoord, trackthumb_params::mousex
         copy16  event_params::ycoord, trackthumb_params::mousey
         MGTK_CALL MGTK::TrackThumb, trackthumb_params
         lda     trackthumb_params::thumbmoved
         beq     done
-
         lda     trackthumb_params::thumbpos
+
 store:  sta     top_row
 
 update: lda     top_row
         sta     updatethumb_params::thumbpos
         MGTK_CALL MGTK::UpdateThumb, updatethumb_params
-        ;; TODO: update voffset
+
+        copy16  #1, line_height
+        add16_8 line_height, DEFAULT_FONT+MGTK::font_offset_height, line_height
+        copy16  #0, winfo_results::cliprect::y1
+        ldx     top_row
+        beq     draw
+:       add16   line_height, winfo_results::cliprect::y1, winfo_results::cliprect::y1
+        dex
+        bpl     :-
+draw:   add16   winfo_results::cliprect::y1, #results_height, winfo_results::cliprect::y2
+        jsr     draw_results
 
 done:   jmp     input_loop
 
 max_top:        .byte   0
+
+line_height:    .word   0
 .endproc
 
 ;;; ============================================================
@@ -787,6 +803,8 @@ done:   rts
 ;;; ============================================================
 
 .proc draw_results
+        ;; TODO: Clear before redrawing???
+
         lda     DEFAULT_FONT+MGTK::font_offset_height
         sta     line_height
         inc     line_height
