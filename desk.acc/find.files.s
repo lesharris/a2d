@@ -46,10 +46,22 @@ entry:
 .endscope
 
 ;;; ============================================================
+;;; Used in both Main and Aux
+
+max_rows        := 40               ; c/o memory limit
+
+entry_buf:
+        .res    65
+
+num_entries:
+        .byte   40
+
+;;; ============================================================
+
 
 da_window_id    := 63
 da_width        := 460
-da_height       := 144
+da_height       := 151
 da_left         := (screen_width - da_width)/2
 da_top          := (screen_height - da_height)/2
 
@@ -60,6 +72,8 @@ results_height       := da_height - 40
 results_left         := da_left + (da_width - results_width_sb) / 2
 results_top          := da_top + 30
 
+results_rows    := 11               ; line height is 10
+
 str_title:
         PASCAL_STRING "Find Files"
 
@@ -69,9 +83,9 @@ options:        .byte   MGTK::option_dialog_box
 title:          .addr   str_title
 hscroll:        .byte   MGTK::scroll_option_none
 vscroll:        .byte   MGTK::scroll_option_none
-hthumbmax:      .byte   32
+hthumbmax:      .byte   0
 hthumbpos:      .byte   0
-vthumbmax:      .byte   32
+vthumbmax:      .byte   0
 vthumbpos:      .byte   0
 status:         .byte   0
 reserved:       .byte   0
@@ -103,14 +117,14 @@ hscroll:        .byte   MGTK::scroll_option_none
 vscroll:        .byte   MGTK::scroll_option_normal
 hthumbmax:      .byte   0
 hthumbpos:      .byte   0
-vthumbmax:      .byte   255
+vthumbmax:      .byte   max_rows - results_rows
 vthumbpos:      .byte   0
 status:         .byte   0
 reserved:       .byte   0
 mincontwidth:   .word   results_width
 mincontlength:  .word   results_height
 maxcontwidth:   .word   results_width
-maxcontlength:  .word   results_height * 2 ; TODO: increase
+maxcontlength:  .word   results_height
 port:
 viewloc:        DEFINE_POINT results_left, results_top
 mapbits:        .addr   MGTK::screen_mapbits
@@ -129,7 +143,6 @@ nextwinfo:      .addr   0
 
 
 ;;; ============================================================
-
 
 .proc event_params
 kind:  .byte   0
@@ -172,7 +185,7 @@ thumbpos:       .byte   0
 .endproc
 
 .proc winport_params
-window_id:      .byte   da_window_id
+window_id:      .byte   0
 port:           .addr   grafport
 .endproc
 
@@ -241,6 +254,8 @@ suffix: PASCAL_STRING "  "
 ip_blink_counter:       .byte   0
 ip_blink_flag:          .byte   0
 
+top_row:        .byte   0
+
 ;;; ============================================================
 
 .proc init
@@ -254,7 +269,7 @@ ip_blink_flag:          .byte   0
 
         lda     #1
         sta     buf_right
-        lda     GLYPH_INSPT
+        lda     #GLYPH_INSPT
         sta     buf_right+1
 
         lda     #0
@@ -264,8 +279,11 @@ ip_blink_flag:          .byte   0
 
         MGTK_CALL MGTK::OpenWindow, winfo
         MGTK_CALL MGTK::OpenWindow, winfo_results
+        MGTK_CALL MGTK::HideCursor
         jsr     draw_window
         jsr     draw_input_text
+        jsr     draw_results
+        MGTK_CALL MGTK::ShowCursor
         MGTK_CALL MGTK::FlushEvents
         ;; fall through
 .endproc
@@ -544,15 +562,59 @@ results:
 ;;; Results scroll
 
 .proc handle_scroll
+        page_size := results_rows
+
+        lda     num_entries        ; TODO: off-by-one probably
+        sec
+        sbc     #page_size
+        sta     max_top
+
         lda     findcontrol_params::which_part
+
+        ;; scroll up by one line
         cmp     #MGTK::part_up_arrow
-        beq     done            ; TODO: Scroll!
+        bne     try_down
+        lda     top_row
+        cmp     #0
+        beq     done            ; no-op
+        dec     top_row
+        bpl     update
+
+        ;; scroll down by one line
+try_down:
         cmp     #MGTK::part_down_arrow
-        beq     done            ; TODO: Scroll!
+        bne     try_pgup
+        lda     top_row
+        cmp     max_top
+        bcs     done            ; no-op
+        inc     top_row
+        bpl     update
+
+        ;; scroll up by one page
+try_pgup:
         cmp     #MGTK::part_page_up
-        beq     done            ; TODO: Scroll!
+        bne     try_pgdn
+        lda     top_row
+        cmp     page_size
+        bcs     :+
+        lda     #0
+        beq     store
+:       sec
+        sbc     page_size
+        jmp     store
+
+        ;; scroll down by one page
+try_pgdn:
         cmp     #MGTK::part_page_down
-        beq     done            ; TODO: Scroll!
+        bne     try_thumb
+        lda     top_row
+        clc
+        adc     page_size
+        cmp     max_top
+        bcc     store
+        lda     max_top
+
+try_thumb:
         cmp     #MGTK::part_thumb
         bne     done
         copy16  event_params::xcoord, trackthumb_params::mousex
@@ -560,8 +622,18 @@ results:
         MGTK_CALL MGTK::TrackThumb, trackthumb_params
         lda     trackthumb_params::thumbmoved
         beq     done
-        ;; TODO: Update thumb
+
+        lda     trackthumb_params::thumbpos
+store:  sta     top_row
+
+update: lda     top_row
+        sta     updatethumb_params::thumbpos
+        MGTK_CALL MGTK::UpdateThumb, updatethumb_params
+        ;; TODO: update voffset
+
 done:   jmp     input_loop
+
+max_top:        .byte   0
 .endproc
 
 ;;; ============================================================
@@ -626,6 +698,8 @@ test_rect:
         rts
 
 invert_rect:
+        lda     #da_window_id
+        sta     winport_params::window_id
         MGTK_CALL MGTK::GetWinPort, winport_params
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::SetPenMode, penxor
@@ -667,8 +741,10 @@ done:   jmp     input_loop
 ;;; ============================================================
 
 .proc draw_window
-        ;; Defer if content area is not visible
+        lda     #da_window_id
+        sta     winport_params::window_id
         MGTK_CALL MGTK::GetWinPort, winport_params
+        ;; No need to check results, since window is always visible.
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
 
@@ -695,6 +771,8 @@ done:   rts
 ;;; ============================================================
 
 .proc draw_input_text
+        lda     #da_window_id
+        sta     winport_params::window_id
         MGTK_CALL MGTK::GetWinPort, winport_params
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::MoveTo, input_textpos
@@ -705,6 +783,48 @@ done:   rts
         MGTK_CALL MGTK::ShowCursor
         rts
 .endproc
+
+;;; ============================================================
+
+.proc draw_results
+        lda     DEFAULT_FONT+MGTK::font_offset_height
+        sta     line_height
+        inc     line_height
+
+        lda     #results_window_id
+        sta     winport_params::window_id
+        MGTK_CALL MGTK::GetWinPort, winport_params
+        ;; No need to check results, since window is always visible.
+        MGTK_CALL MGTK::SetPort, grafport
+        MGTK_CALL MGTK::HideCursor
+
+        lda     #0
+        sta     line
+        copy16  #0, pos_ycoord
+loop:   add16_8   pos_ycoord, line_height, pos_ycoord
+        MGTK_CALL MGTK::MoveTo, pos
+
+        lda     line
+        jsr     get_entry
+
+        addr_call draw_string, entry_buf
+        inc     line
+        lda     line
+        cmp     num_entries
+        bcc     loop
+
+        MGTK_CALL MGTK::ShowCursor
+done:   rts
+
+line_height:
+        .byte   0
+
+line:   .byte   0
+pos:    DEFINE_POINT 5, 0, pos
+        pos_ycoord := pos::ycoord
+
+.endproc
+
 
 ;;; ============================================================
 ;;; Helper to draw a PASCAL_STRING; call with addr in A,X
@@ -723,6 +843,36 @@ length: .res    1
         inc16   params::addr
         MGTK_CALL MGTK::DrawText, params
 done:   rts
+.endproc
+
+;;; ============================================================
+;;; Populate entry_buf with entry in A
+
+.proc get_entry
+
+        ;; Demo purposes: sample plus suffix
+        pha
+
+        ;; sample
+        ldy     sample
+:       lda     sample,y
+        sta     entry_buf,y
+        dey
+        bpl     :-
+
+        ;; suffix
+        pla
+        ldy     entry_buf
+        iny
+        clc
+        adc     #'A'
+        sta     entry_buf,y
+        sty     entry_buf
+
+        rts
+
+sample: PASCAL_STRING "/Hd/Games/Dig.Dug/"
+
 .endproc
 
 ;;; ============================================================
