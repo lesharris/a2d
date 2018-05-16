@@ -634,14 +634,19 @@ update: lda     top_row
         sta     updatethumb_params::thumbpos
         MGTK_CALL MGTK::UpdateThumb, updatethumb_params
 
+        ;; Compute height of line (font height + 1)
         copy16  #1, line_height
         add16_8 line_height, DEFAULT_FONT+MGTK::font_offset_height, line_height
+
+        ;; Update top of cliprect: 1 + top_row * line_height
         copy16  #0, winfo_results::cliprect::y1
         ldx     top_row
         beq     draw
 :       add16   line_height, winfo_results::cliprect::y1, winfo_results::cliprect::y1
         dex
-        bpl     :-
+        bne     :-
+
+        ;; Update bottom of cliprect
 draw:   add16   winfo_results::cliprect::y1, #results_height, winfo_results::cliprect::y2
         jsr     draw_results
 
@@ -803,8 +808,6 @@ done:   rts
 ;;; ============================================================
 
 .proc draw_results
-        ;; TODO: Clear before redrawing???
-
         lda     DEFAULT_FONT+MGTK::font_offset_height
         sta     line_height
         inc     line_height
@@ -815,6 +818,9 @@ done:   rts
         ;; No need to check results, since window is always visible.
         MGTK_CALL MGTK::SetPort, grafport
         MGTK_CALL MGTK::HideCursor
+
+        ;; TODO: Optimize erasing
+        MGTK_CALL MGTK::PaintRect, winfo_results::cliprect
 
         lda     #0
         sta     line
