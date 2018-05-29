@@ -345,6 +345,20 @@ done:   rts
 ;;; ============================================================
 
 .proc handle_key
+        lda     event_params::modifiers
+        beq     not_meta
+
+        ;; Button down
+        lda     event_params::key
+        cmp     #CHAR_LEFT
+        bne     :+
+        jmp     do_meta_left
+:       cmp     #CHAR_RIGHT
+        bne     :+
+        jmp     do_meta_right
+:       jmp     ignore_char
+
+not_meta:
         lda     event_params::key
         cmp     #CHAR_ESCAPE
         beq     exit
@@ -383,7 +397,7 @@ ignore_char:
         ;;         jsr     beep ; ?
         jmp     input_loop
 
-;;; ; ------------------------------------------------------------
+;;; ------------------------------------------------------------
 
 .proc do_char
         ;; check length
@@ -404,8 +418,48 @@ ignore_char:
         jmp     input_loop
 .endproc
 
-;;; ; ------------------------------------------------------------
+;;; ------------------------------------------------------------
 
+.proc do_meta_left
+        lda     buf_left            ; length of string to left of IP
+        beq     done
+
+        ;; shift right string up N (apart from IP)
+        clc
+        adc     buf_right
+        tay
+        ldx     buf_right
+:       cpx     #1
+        beq     move
+        lda     buf_right,x
+        sta     buf_right,y
+        dex
+        dey
+        bne     :-              ; always
+
+        ;; move chars from left string to just after IP in right string
+move:   ldx     buf_left
+:       lda     buf_left,x
+        sta     buf_right+1,x
+        dex
+        bpl     :-
+
+        ;; adjust lengths
+        lda     buf_left
+        clc
+        adc     buf_right
+        sta     buf_right
+
+        lda     #0
+        sta     buf_left
+
+        jsr     draw_input_text
+
+done:   jmp     input_loop
+
+.endproc
+
+;;; ------------------------------------------------------------
 
 .proc do_left
         lda     buf_left            ; length of string to left of IP
@@ -437,10 +491,45 @@ ignore_char:
 done:   jmp     input_loop
 .endproc
 
-;;; ; ------------------------------------------------------------
+;;; ------------------------------------------------------------
+
+.proc do_meta_right
+        lda     buf_right       ; length of string from IP rightwards
+        cmp     #2              ; must be at least one char (plus IP)
+        bcc     done
+
+        ;; append right string to left
+        ldx     #2
+        ldy     buf_left
+        iny
+:       lda     buf_right,x
+        sta     buf_left,y
+        cpx     buf_right
+        beq     :+
+        inx
+        iny
+        bne     :-              ; always
+
+        ;; adjust lengths
+:       lda     buf_left
+        clc
+        adc     buf_right
+        sec
+        sbc     #1
+        sta     buf_left
+
+        lda     #1
+        sta     buf_right
+
+        jsr     draw_input_text
+
+done:   jmp     input_loop
+.endproc
+
+;;; ------------------------------------------------------------
 
 .proc do_right
-        lda     buf_right            ; length of string from IP rightwards
+        lda     buf_right       ; length of string from IP rightwards
         cmp     #2              ; must be at least one char (plus IP)
         bcc     done
 
@@ -469,7 +558,7 @@ done:   jmp     input_loop
 done:   jmp     input_loop
 .endproc
 
-;;; ; ------------------------------------------------------------
+;;; ------------------------------------------------------------
 
 
 .proc do_delete
@@ -483,7 +572,7 @@ done:   jmp     input_loop
 .endproc
 
 
-;;; ; ------------------------------------------------------------
+;;; ------------------------------------------------------------
 
 .proc do_search
         ;; Concatenate left/right strings
@@ -636,7 +725,7 @@ update: lda     top_row
 
         ;; Compute height of line (font height + 1)
         copy16  #1, line_height
-        add16_8 line_height, DEFAULT_FONT+MGTK::font_offset_height, line_height
+        add16_8 line_height, DEFAULT_FONT+MGTK::Font::height, line_height
 
         ;; Update top of cliprect: 1 + top_row * line_height
         copy16  #0, winfo_results::cliprect::y1
@@ -808,7 +897,7 @@ done:   rts
 ;;; ============================================================
 
 .proc draw_results
-        lda     DEFAULT_FONT+MGTK::font_offset_height
+        lda     DEFAULT_FONT+MGTK::Font::height
         sta     line_height
         inc     line_height
 
