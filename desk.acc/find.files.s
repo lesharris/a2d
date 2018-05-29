@@ -361,11 +361,17 @@ done:   rts
 not_meta:
         lda     event_params::key
         cmp     #CHAR_ESCAPE
-        beq     exit
+        bne     :+
+        addr_call flash_button, cancel_button_rect
+        jmp     exit
 
-        ;;         cmp #CHAR_ENTER
-        ;;         beq do_search
-        cmp     #CHAR_LEFT
+:       cmp     #CHAR_RETURN
+        bne     :+
+        addr_call flash_button, search_button_rect
+        jmp     input_loop      ; TODO: Implement
+
+
+:       cmp     #CHAR_LEFT
         bne     :+
         jmp     do_left
 :       cmp     #CHAR_RIGHT
@@ -817,6 +823,23 @@ invert_rect:
         rts
 .endproc
 
+;;; ============================================================
+;;; Call with rect addr in A,X
+
+.proc flash_button
+        stax    fillrect_addr
+
+        lda     #da_window_id
+        sta     winport_params::window_id
+        MGTK_CALL MGTK::GetWinPort, winport_params
+        MGTK_CALL MGTK::SetPort, grafport
+        MGTK_CALL MGTK::SetPenMode, penxor
+        jsr     sub
+        ;; fall through...
+
+sub:    MGTK_CALL MGTK::PaintRect, 0, fillrect_addr
+        rts
+.endproc
 
 ;;; ============================================================
 
